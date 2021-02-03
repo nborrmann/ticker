@@ -8,9 +8,13 @@ import (
 
 type Position struct {
 	AggregatedLot
-	Value            float64
-	DayChange        float64
-	DayChangePercent float64
+	Value              float64
+	ValuePreviousClose float64
+	DayChange          float64
+	DayChangePercent   float64
+	AbsoluteReturn     float64
+	RelativeReturn     float64
+	Cost               float64
 }
 
 type Lot struct {
@@ -81,11 +85,17 @@ func GetPositions(aggregatedLots map[string]AggregatedLot) func([]Quote) map[str
 				if _, ok := aggregatedLots[quote.Symbol]; ok {
 					dayChange := quote.Change * aggregatedLots[quote.Symbol].Quantity
 					valuePreviousClose := quote.RegularMarketPreviousClose * aggregatedLots[quote.Symbol].Quantity
+					valueCurrent := quote.Price * aggregatedLots[quote.Symbol].Quantity
+					cost := aggregatedLots[quote.Symbol].Cost
 					return append(acc, Position{
-						AggregatedLot:    aggregatedLots[quote.Symbol],
-						Value:            quote.Price * aggregatedLots[quote.Symbol].Quantity,
-						DayChange:        dayChange,
-						DayChangePercent: (dayChange / valuePreviousClose) * 100,
+						AggregatedLot:      aggregatedLots[quote.Symbol],
+						Value:              valueCurrent,
+						ValuePreviousClose: valuePreviousClose,
+						DayChange:          dayChange,
+						DayChangePercent:   (dayChange / valuePreviousClose) * 100,
+						Cost:               cost,
+						AbsoluteReturn:     valueCurrent - cost,
+						RelativeReturn:     (valueCurrent - cost) / cost * 100,
 					})
 				}
 				return acc

@@ -31,7 +31,7 @@ type Cell struct {
 	Align TextAlign
 }
 
-func Line(width int, cells ...Cell) string {
+func Line(width int, bg bool, cells ...Cell) string {
 
 	widthFlex := width
 	var widthFlexCells []*int

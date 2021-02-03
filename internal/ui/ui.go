@@ -137,6 +137,7 @@ func footer(width int, time string) string {
 
 	return Line(
 		width,
+		false,
 		Cell{
 			Width: 10,
 			Text:  styleLogo(" ticker "),

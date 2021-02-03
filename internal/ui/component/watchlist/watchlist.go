@@ -2,7 +2,6 @@ package watchlist
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"ticker/internal/position"
@@ -11,23 +10,27 @@ import (
 
 	. "ticker/internal/ui/util/text"
 
-	"github.com/lucasb-eyer/go-colorful"
 	"github.com/novalagung/gubrak/v2"
 )
 
 var (
-	styleNeutral       = NewStyle("#d4d4d4", "", false)
-	styleNeutralBold   = NewStyle("#d4d4d4", "", true)
-	styleNeutralFaded  = NewStyle("#616161", "", false)
-	styleLine          = NewStyle("#3a3a3a", "", false)
-	styleTag           = NewStyle("#d4d4d4", "#3a3a3a", false)
-	styleTagEnd        = NewStyle("#3a3a3a", "#3a3a3a", false)
-	stylePricePositive = newStyleFromGradient("#C6FF40", "#779929")
-	stylePriceNegative = newStyleFromGradient("#FF7940", "#994926")
+	styleNeutral      = NewStyle("#d4d4d4", "", false)
+	styleNeutralBold  = NewStyle("#d4d4d4", "", true)
+	styleNeutralFaded = NewStyle("#616161", "", false)
+	styleLine         = NewStyle("#3a3a3a", "", false)
+	styleTag          = NewStyle("#d4d4d4", "#3a3a3a", false)
+	styleTagEnd       = NewStyle("#3a3a3a", "#3a3a3a", false)
+	styleGain         = NewStyle("#aae61e", "", false)
+	styleLoss         = NewStyle("#FF7940", "", false)
+	styleFooter       = NewStyle("#d4d4d4", "", true)
+	styleGainFooter   = NewStyle("#aae61e", "", true)
+	styleLossFooter   = NewStyle("#FF7940", "", true)
+	//stylePricePositive = newStyleFromGradient("#779929", "#C6FF40")
+	//stylePriceNegative = newStyleFromGradient("#FF7940", "#994926")
 )
 
 const (
-	maxPercentChangeColorGradient = 10
+	maxPercentChangeColorGradient = 100
 )
 
 type Model struct {
@@ -55,8 +58,11 @@ func (m Model) View() string {
 		return fmt.Sprintf("Terminal window too narrow to render content\nResize to fix (%d/80)", m.Width)
 	}
 
+	horizontalLine := strings.Repeat("─", m.Width)
 	quotes := sortQuotes(m.Quotes)
 	items := make([]string, 0)
+	items = append(items, header(m.Width))
+	items = append(items, horizontalLine)
 	for _, quote := range quotes {
 		items = append(
 			items,
@@ -71,6 +77,8 @@ func (m Model) View() string {
 		)
 	}
 
+	items = append(items, horizontalLine)
+	items = append(items, showTotals(quotes, m.Positions, m.Width))
 	return strings.Join(items, separator(m.Separate, m.Width))
 }
 
@@ -78,6 +86,7 @@ func separator(isSeparated bool, width int) string {
 	if isSeparated {
 		return "\n" + Line(
 			width,
+			false,
 			Cell{
 				Text: styleLine(strings.Repeat("⎯", width)),
 			},
@@ -87,55 +96,123 @@ func separator(isSeparated bool, width int) string {
 	return "\n"
 }
 
-func item(q quote.Quote, p position.Position, width int) string {
-
-	return JoinLines(
-		Line(
-			width,
-			Cell{
-				Text: styleNeutralBold(q.Symbol),
-			},
-			Cell{
-				Width: 5,
-				Text:  marketStateText(q),
-				Align: RightAlign,
-			},
-			Cell{
-				Width: 25,
-				Text:  valueText(p.Value),
-				Align: RightAlign,
-			},
-			Cell{
-				Width: 25,
-				Text:  styleNeutral(ConvertFloatToString(q.Price)),
-				Align: RightAlign,
-			},
-		),
-		Line(
-			width,
-			Cell{
-				Text: styleNeutralFaded(q.ShortName),
-			},
-			Cell{
-				Width: 25,
-				Text:  valueChangeText(p.DayChange, p.DayChangePercent),
-				Align: RightAlign,
-			},
-			Cell{
-				Width: 25,
-				Text:  quoteChangeText(q.Change, q.ChangePercent),
-				Align: RightAlign,
-			},
-		),
+func header(width int) string {
+	return Line(
+		width,
+		false,
+		Cell{
+			Text: styleNeutralBold("SECURITY"),
+		},
+		Cell{
+			Width: 5,
+			Text:  "",
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 10,
+			Text:  styleNeutralBold("Pos"),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 22,
+			Text:  styleNeutralBold("Daily Chg."),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 22,
+			Text:  styleNeutralBold("Total Chg."),
+			Align: RightAlign,
+		},
 	)
 }
 
+func item(q quote.Quote, p position.Position, width int) string {
+
+	return Line(
+		width,
+		false,
+		Cell{
+			Text: styleNeutral(q.ShortName),
+		},
+		Cell{
+			Width: 5,
+			Text:  marketStateText(q),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 10,
+			Text:  valueText(p.Value),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 22,
+			Text:  valueChangeText(p.DayChange, p.DayChangePercent, false),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 22,
+			Text:  valueChangeText(p.AbsoluteReturn, p.RelativeReturn, false),
+			Align: RightAlign,
+		},
+	)
+}
+
+func showTotals(quotes []quote.Quote, positions map[string]position.Position, width int) string {
+	totalReturn := 0.0
+	totalCurrent := 0.0
+	totalCost := 0.0
+	dailyReturn := 0.0
+	valuePreviousClose := 0.0
+	for _, quote := range quotes {
+		if p, ok := positions[quote.Symbol]; ok {
+			totalReturn += p.AbsoluteReturn
+			totalCurrent += p.Value
+			totalCost += p.Cost
+			dailyReturn += p.DayChange
+			valuePreviousClose += p.ValuePreviousClose
+		}
+	}
+	if totalReturn <= 0.00001 {
+		// don't bother displaying if the total basis is near zero
+		return ""
+	}
+
+	return Line(
+		width,
+		true,
+		Cell{
+			Text: styleFooter("TOTAL"),
+		},
+		Cell{
+			Width: 5,
+			Text:  "",
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 10,
+			Text:  styleFooter(ConvertFloatToStringNoDecimals(totalCurrent)),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 22,
+			Text:  valueChangeText(dailyReturn, dailyReturn/valuePreviousClose*100, true),
+			Align: RightAlign,
+		},
+		Cell{
+			Width: 22,
+			Text:  valueChangeText(totalReturn, totalReturn/totalCost*100, true),
+			Align: RightAlign,
+		},
+	)
+
+}
 func extraInfoExchange(show bool, q quote.Quote, width int) string {
 	if !show {
 		return ""
 	}
 	return "\n" + Line(
 		width,
+		false,
 		Cell{
 			Text: tagText(q.Currency) + " " + tagText(exchangeDelayText(q.ExchangeDelay)) + " " + tagText(q.ExchangeName),
 		},
@@ -149,13 +226,14 @@ func extraInfoFundamentals(show bool, q quote.Quote, width int) string {
 
 	return "\n" + Line(
 		width,
+		false,
 		Cell{
 			Width: 25,
-			Text:  styleNeutralFaded("Prev Close: ") + styleNeutral(ConvertFloatToString(q.RegularMarketPreviousClose)),
+			Text:  styleNeutralFaded("Prev Close: ") + styleNeutral(ConvertFloatToString(q.RegularMarketPreviousClose, true)),
 		},
 		Cell{
 			Width: 20,
-			Text:  styleNeutralFaded("Open: ") + styleNeutral(ConvertFloatToString(q.RegularMarketOpen)),
+			Text:  styleNeutralFaded("Open: ") + styleNeutral(ConvertFloatToString(q.RegularMarketOpen, true)),
 		},
 		Cell{
 			Text: dayRangeText(q.RegularMarketDayRange),
@@ -199,48 +277,43 @@ func valueText(value float64) string {
 		return ""
 	}
 
-	return styleNeutral(ConvertFloatToString(value))
+	return styleNeutral(ConvertFloatToStringNoDecimals(value))
 }
 
-func valueChangeText(change float64, changePercent float64) string {
-	if change == 0.0 {
+func valueTextBold(value float64) string {
+	if value <= 0.0 {
 		return ""
 	}
 
-	return quoteChangeText(change, changePercent)
+	return styleNeutralBold(ConvertFloatToStringNoDecimals(value))
 }
 
-func quoteChangeText(change float64, changePercent float64) string {
-	if change == 0.0 {
-		return styleNeutralFaded("  " + ConvertFloatToString(change) + "  (" + ConvertFloatToString(changePercent) + "%)")
-	}
-
-	if change > 0.0 {
-		return stylePricePositive(changePercent)("↑ " + ConvertFloatToString(change) + "  (" + ConvertFloatToString(changePercent) + "%)")
-	}
-
-	return stylePriceNegative(changePercent)("↓ " + ConvertFloatToString(change) + " (" + ConvertFloatToString(changePercent) + "%)")
+func valueChangeText(change float64, changePercent float64, bold bool) string {
+	return quoteChangeText(change, changePercent, bold)
 }
 
-func newStyleFromGradient(startColorHex string, endColorHex string) func(float64) func(string) string {
-	c1, _ := colorful.Hex(startColorHex)
-	c2, _ := colorful.Hex(endColorHex)
+func quoteChangeText(change float64, changePercent float64, bold bool) string {
+	if bold {
+		if change == 0.0 {
+			return styleNeutralFaded("  " + ConvertFloatToString(change, false) + " (" + ConvertFloatToString(changePercent, true) + "%)")
+		}
 
-	return func(percent float64) func(string) string {
-		normalizedPercent := getNormalizedPercentWithMax(percent, maxPercentChangeColorGradient)
-		return NewStyle(c1.BlendHsv(c2, normalizedPercent).Hex(), "", false)
+		if change > 0.0 {
+			return styleGainFooter("↑ " + ConvertFloatToString(change, false) + " (" + ConvertFloatToString(changePercent, true) + "%)")
+		}
+
+		return styleLossFooter("↓ " + ConvertFloatToString(change, false) + " (" + ConvertFloatToString(changePercent, true) + "%)")
+	} else {
+		if change == 0.0 {
+			return styleNeutralFaded("  " + ConvertFloatToString(change, false) + " (" + ConvertFloatToString(changePercent, true) + "%)")
+		}
+
+		if change > 0.0 {
+			return styleGain("↑ " + ConvertFloatToString(change, false) + " (" + ConvertFloatToString(changePercent, true) + "%)")
+		}
+
+		return styleLoss("↓ " + ConvertFloatToString(change, false) + " (" + ConvertFloatToString(changePercent, true) + "%)")
 	}
-}
-
-// Normalize 0-100 percent with a maximum percent value
-func getNormalizedPercentWithMax(percent float64, maxPercent float64) float64 {
-
-	absolutePercent := math.Abs(percent)
-	if absolutePercent >= maxPercent {
-		return 1.0
-	}
-	return math.Abs(percent / maxPercent)
-
 }
 
 // Sort by change percent and keep all inactive quotes at the end

@@ -22,5 +22,6 @@ require (
 	github.com/spf13/viper v1.7.0
 	golang.org/x/net v0.0.0-20200625001655-4c5254603344 // indirect
 	golang.org/x/sys v0.0.0-20210108172913-0df2131ae363 // indirect
+	golang.org/x/text v0.3.3
 	gopkg.in/yaml.v2 v2.4.0
 )
